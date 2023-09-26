@@ -59,6 +59,7 @@ Parameters:
           - AliyunFCDefaultRolePolicy
           - AliyunFCFullAccess
           - AliyunOTSFullAccess
+          - AliyunContainerRegistryReadOnlyAccess
     ossBucket:
       title: oss bucket
       type: string
