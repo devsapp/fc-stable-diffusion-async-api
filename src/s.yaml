@@ -1,0 +1,228 @@
+edition: 1.0.0 #  命令行YAML规范版本，遵循语义化版本（Semantic Versioning）规范
+name: fc-stable-diffusion-async-api
+access: default
+vars:
+  region: "{{ region }}" 
+  serviceName: "{{ serviceName }}"
+  agentImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:agent_v2" 
+  proxyImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:proxy_v2" 
+  filemgrToken: "{{ filemgrToken || '' }}"
+  extraArgs: "{{ extraArgs || '' }} --api"
+  ots: "{{ otsInstance }}"
+  service:
+    name: ${vars.serviceName}
+    description: 'stable-diffusion-async-api 部署到函数计算'
+    internetAccess: true
+    role: "{{roleArn}}"
+    nasConfig: auto
+    ossMountConfig: # 挂载 oss
+      mountPoints:
+        - endpoint: "http://oss-{{ region }}-internal.aliyuncs.com" # OSS服务地址
+          bucketName: "{{ ossBucket }}" # OSS bucket名称
+          bucketPath: / # 挂载的OSS Bucket路径。留空或者填`/`，都表示挂载bucket根目录
+          mountDir: /mnt/oss # 函数计算目录
+          readOnly: false # 是否挂载为只读
+
+services:
+  stable-diffusion:
+    component: fc
+    actions: 
+      post-deploy: 
+        - component: fc ondemand put --qualifier LATEST --max 1
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: sd
+        description: Stable Diffusion WebUI 函数
+        handler: index.handler
+        timeout: 600
+        diskSize: 512
+        caPort: 7860
+        instanceType: fc.gpu.tesla.1
+        runtime: custom-container
+        cpu: 8
+        customContainerConfig:
+          args: ''
+          accelerationType: Default
+          image: ${vars.agentImageUrl}
+          accelerationInfo:
+            status: Preparing
+          command: ''
+          webServerMode: true
+        instanceConcurrency: 100
+        memorySize: 32768
+        gpuMemorySize: 16384
+        asyncConfiguration: {}
+        environmentVariables:
+          EXTRA_ARGS: ${vars.extraArgs}
+          EXPOSE_TO_USER: 'yes'
+      triggers:
+        - name: defaultTrigger
+          description: ''
+          type: http
+          qualifier: LATEST
+          config:
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            authType: anonymous
+            disableURLInternet: false
+      customDomains:
+        - domainName: auto
+          protocol: HTTP
+          routeConfigs:
+            - path: /*
+
+  filemgr:
+    component: fc 
+    actions: 
+      post-deploy: 
+        - component: fc ondemand put --qualifier LATEST --max 1
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: "admin"
+        description: '模型管理辅助工具'
+        codeUri: './code/filemgr'
+        runtime: custom
+        timeout: 7200
+        memorySize: 3072
+        cpu: 2.0
+        diskSize: 512
+        instanceConcurrency: 16
+        caPort: 9000
+        customRuntimeConfig:
+          command:
+            - ./server
+        environmentVariables:
+          TOKEN: ${vars.filemgrToken}
+          SD_VERSION: ""
+          SD_FUNCTION_NAME: ${stable-diffusion.props.function.name}
+          SD_DOMAIN: ${stable-diffusion.output.url.custom_domain[0].domain}
+        layers:
+          - "acs:fc:${vars.region}:official:layers/ServerlessDevs/versions/1"
+          - "acs:fc:${vars.region}:official:layers/Python310/versions/2"
+      triggers:
+        - name: httpTrigger
+          type: http
+          config:
+            authType: anonymous
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - HEAD
+              - OPTIONS
+      customDomains:
+        - domainName: auto
+          protocol: HTTP
+          routeConfigs:
+            - path: /*
+  control:
+    component: fc
+    actions: 
+      post-deploy: 
+        - component: fc ondemand put --qualifier LATEST --max 1
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: control
+        description: api 并发控制函数
+        handler: index.handler
+        timeout: 600
+        diskSize: 512
+        caPort: 80
+        runtime: custom-container
+        cpu: 1
+        customContainerConfig:
+          args: ''
+          accelerationType: Default
+          image: ${vars.proxyImageUrl}
+          accelerationInfo:
+            status: Preparing
+          command: ''
+          webServerMode: true
+        instanceConcurrency: 10
+        memorySize: 1024
+        asyncConfiguration: {}
+        environmentVariables:
+          SERVER_NAME: 'control'
+          OTS_ENDPOINT: 'https://${vars.ots}.${vars.region}.ots.aliyuncs.com'
+          OTS_INSTANCE: ${vars.ots}
+          SD_IMAGE: ${vars.agentImageUrl}
+      triggers:
+        - name: defaultTrigger
+          description: ''
+          type: http
+          qualifier: LATEST
+          config:
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            authType: anonymous
+            disableURLInternet: false
+      # customDomains:
+      #   - domainName: auto
+      #     protocol: HTTP
+      #     routeConfigs:
+      #       - path: /*
+  proxy:
+    component: fc
+    actions: 
+      post-deploy: 
+        - component: fc ondemand put --qualifier LATEST --max 1
+    props:
+      region: ${vars.region}
+      service: ${vars.service}
+      function:
+        name: proxy
+        description: api 代理函数
+        handler: index.handler
+        timeout: 600
+        diskSize: 512
+        caPort: 80
+        runtime: custom-container
+        cpu: 1
+        customContainerConfig:
+          args: ''
+          accelerationType: Default
+          image: ${vars.proxyImageUrl}
+          accelerationInfo:
+            status: Preparing
+          command: ''
+          webServerMode: true
+        instanceConcurrency: 100
+        memorySize: 1024
+        asyncConfiguration: {}
+        environmentVariables:
+          FLEX_MODE: 'multiFunc'
+          SERVER_NAME: 'proxy'
+          DOWNSTREAM: '${control.output.url.system_intranet_url}'
+          OTS_ENDPOINT: 'https://${vars.ots}.${vars.region}.ots.aliyuncs.com'
+          OTS_INSTANCE: ${vars.ots}
+      triggers:
+        - name: defaultTrigger
+          description: ''
+          type: http
+          qualifier: LATEST
+          config:
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+            authType: anonymous
+            disableURLInternet: false
+      customDomains:
+        - domainName: auto
+          protocol: HTTP
+          routeConfigs:
+            - path: /*
