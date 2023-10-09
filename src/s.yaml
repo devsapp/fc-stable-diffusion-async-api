@@ -4,7 +4,7 @@ access: default
 vars:
   region: "{{ region }}" 
   serviceName: "{{ serviceName }}"
-  agentImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:agent_v1"
+  agentImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:agent_v3"
   proxyImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:proxy_v2"
   filemgrToken: "{{ filemgrToken || '' }}"
   extraArgs: "{{ extraArgs || '' }} --api"
