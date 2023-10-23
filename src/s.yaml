@@ -4,10 +4,10 @@ access: default
 vars:
   region: "{{ region }}" 
   serviceName: "{{ serviceName }}"
-  agentImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:agent_v3"
-  proxyImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:proxy_v2"
+  agentImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:agent_v7-1.6"
+  proxyImageUrl: "registry.{{region}}.aliyuncs.com/sd_api_public/sd-api:proxy_v7"
   filemgrToken: "{{ filemgrToken || '' }}"
-  extraArgs: "{{ extraArgs || '' }} --api"
+  extraArgs: "{{ extraArgs || '' }} --api --no-hashing"
   ots: "{{ otsInstance }}"
   service:
     name: ${vars.serviceName}
@@ -152,6 +152,7 @@ services:
         memorySize: 1024
         asyncConfiguration: {}
         environmentVariables:
+          COLD_START_CONCURRENCY: 10
           SERVER_NAME: 'control'
           OTS_ENDPOINT: 'https://${vars.ots}.${vars.region}.ots.aliyuncs.com'
           OTS_INSTANCE: ${vars.ots}
