@@ -27,6 +27,7 @@ Parameters:
         - ap-northeast-1
         - cn-hangzhou
         - cn-shanghai
+        - cn-beijing
     serviceName:
       title: 服务名
       type: string
